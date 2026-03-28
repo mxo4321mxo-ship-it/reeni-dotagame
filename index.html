@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Dota Party Game</title>
+
+<style>
+body {
+  margin:0;
+  font-family:Arial;
+  background:linear-gradient(135deg,#0f0f0f,#200000);
+  color:white;
+  text-align:center;
+}
+
+.container { padding:20px; }
+
+button {
+  padding:10px 18px;
+  margin:6px;
+  border:none;
+  border-radius:10px;
+  background:crimson;
+  color:white;
+}
+
+input {
+  padding:10px;
+  margin:5px;
+  border-radius:8px;
+  border:none;
+}
+
+.playerRow {
+  display:flex;
+  justify-content:center;
+}
+
+.hidden { display:none; }
+
+img {
+  width:200px;
+  margin:10px;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>Dota Party 🎮</h1>
+
+<div id="menu">
+<button onclick="start('letter')">Буква</button>
+<button onclick="start('impostor')">Импостер</button>
+</div>
+
+<div id="setup" class="hidden">
+<h2>Игроки</h2>
+<div id="players"></div>
+<button onclick="addPlayer()">➕ Добавить</button><br>
+<button onclick="begin()">Начать</button>
+</div>
+
+<div id="choose" class="hidden">
+<h2 id="chooseTitle"></h2>
+<div id="chooserList"></div>
+</div>
+
+<div id="game" class="hidden">
+<h2 id="info"></h2>
+<img id="heroImg" style="display:none;">
+<button id="nextBtn" onclick="next()">Дальше</button>
+</div>
+
+<div id="finish" class="hidden">
+<h2 id="result"></h2>
+<button onclick="location.reload()">Играть снова</button>
+</div>
+
+</div>
+
+<script>
+
+let mode, players=[], hero="", heroImg="", letter="";
+let chooser=-1, current=0, impostor=-1, revealIndex=0;
+
+const letters="АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЭЮЯ";
+
+const heroes=[
+  {name:"Pudge", img:"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/pudge.png"},
+  {name:"Invoker", img:"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/invoker.png"},
+  {name:"Io", img:"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/wisp.png"},
+  {name:"Juggernaut", img:"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/juggernaut.png"},
+  {name:"Sniper", img:"https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/sniper.png"}
+];
+
+// элементы
+const menu = document.getElementById('menu');
+const setup = document.getElementById('setup');
+const choose = document.getElementById('choose');
+const chooserList = document.getElementById('chooserList');
+const chooseTitle = document.getElementById('chooseTitle');
+const game = document.getElementById('game');
+const info = document.getElementById('info');
+const heroImgEl = document.getElementById('heroImg');
+const finish = document.getElementById('finish');
+const result = document.getElementById('result');
+const nextBtn = document.getElementById('nextBtn');
+
+// старт
+function start(m){
+  mode=m;
+  menu.classList.add('hidden');
+  setup.classList.remove('hidden');
+  addPlayer(); addPlayer();
+}
+
+// игроки
+function addPlayer(){
+  let div=document.createElement('div');
+  div.className="playerRow";
+  div.innerHTML=`
+    <input placeholder="Имя">
+    <button onclick="this.parentElement.remove()">❌</button>
+  `;
+  playersDiv = document.getElementById('players');
+  playersDiv.appendChild(div);
+}
+
+// начало
+function begin(){
+  players=[...document.querySelectorAll('#players input')]
+    .map(i=>i.value||"Игрок");
+
+  let h=heroes[Math.floor(Math.random()*heroes.length)];
+  hero=h.name;
+  heroImg=h.img;
+
+  letter=letters[Math.floor(Math.random()*letters.length)];
+  impostor=Math.floor(Math.random()*players.length);
+
+  setup.classList.add('hidden');
+
+  if(mode==="letter"){
+    chooseTitle.innerText="Кто загадывает?";
+    choose.classList.remove('hidden');
+
+    chooserList.innerHTML="";
+    players.forEach((p,i)=>{
+      let btn=document.createElement('button');
+      btn.innerText=p;
+      btn.onclick=()=>{
+        chooser=i;
+        choose.classList.add('hidden');
+        game.classList.remove('hidden');
+        current=0;
+        showLetter();
+      };
+      chooserList.appendChild(btn);
+    });
+  }
+
+  if(mode==="impostor"){
+    game.classList.remove('hidden');
+    revealIndex=0;
+    revealPhase();
+  }
+}
+
+//
+// 🔤 РЕЖИМ БУКВА
+//
+
+function showLetter(){
+  heroImgEl.src=heroImg;
+
+  if(current===chooser){
+    info.innerHTML=`${players[current]}<br>ТЫ ЗАГАДЫВАЕШЬ<br>${hero}<br>Буква: ${letter}`;
+    heroImgEl.style.display="block";
+  }else{
+    info.innerHTML=`${players[current]}<br>Буква: ${letter}`;
+    heroImgEl.style.display="none";
+  }
+}
+
+function next(){
+  current++;
+  if(current>=players.length){
+    finishGame();
+    return;
+  }
+  showLetter();
+}
+
+//
+// 😈 РЕЖИМ ИМПОСТЕР
+//
+
+function revealPhase(){
+  heroImgEl.style.display="none";
+  nextBtn.style.display="none";
+
+  if(revealIndex>=players.length){
+    info.innerHTML="Все посмотрели 👀<br><button onclick='finishGame()'>Показать результат</button>";
+    return;
+  }
+
+  info.innerHTML=`
+    Передай телефон:<br><b>${players[revealIndex]}</b><br><br>
+    <button onclick="revealRole()">Посмотреть</button>
+  `;
+}
+
+function revealRole(){
+  if(revealIndex===impostor){
+    info.innerHTML=`${players[revealIndex]}<br>ТЫ ИМПОСТЕР 😈<br><button onclick="nextReveal()">Скрыть</button>`;
+  }else{
+    info.innerHTML=`${players[revealIndex]}<br>Герой: ${hero}<br><button onclick="nextReveal()">Скрыть</button>`;
+    heroImgEl.src=heroImg;
+    heroImgEl.style.display="block";
+  }
+}
+
+function nextReveal(){
+  revealIndex++;
+  revealPhase();
+}
+
+//
+// ФИНАЛ
+//
+
+function finishGame(){
+  game.classList.add('hidden');
+  finish.classList.remove('hidden');
+
+  if(mode==="letter"){
+    result.innerHTML=`Герой был: ${hero}`;
+  }
+
+  if(mode==="impostor"){
+    result.innerHTML=`Импостер: ${players[impostor]}<br>Герой был: ${hero}`;
+  }
+}
+
+</script>
+
+</body>
+</html>
