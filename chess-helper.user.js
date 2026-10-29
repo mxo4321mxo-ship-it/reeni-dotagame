@@ -574,7 +574,7 @@ Engine.prototype.pv=function(pos,first,maxLen){
 };
 
 // итеративное углубление с несколькими вариантами (multipv)
-Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
+Engine.prototype.think=function(pos,timeMs,multipv,onInfo,maxDepth){
   const start=Date.now();
   this.deadline=start+timeMs; this.stop=false; this.nodes=0;
   for(let i=0;i<4096;i++) this.history[i]>>=2;
@@ -582,7 +582,7 @@ Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
   if(!root.length) return null;
   let order=root.map(m=>({m,score:0}));
   let result=null;
-  for(let d=1;d<=60;d++){
+  for(let d=1;d<=(maxDepth||60);d++){
     this.rootDepth=d;
     const k=Math.min(multipv,order.length);
     const res=[];
@@ -621,10 +621,10 @@ Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
 if(typeof importScripts==="function"){
   const engine=new Engine();
   self.onmessage=e=>{
-    const {id,fen,moves,time,multipv}=e.data;
+    const {id,fen,moves,time,multipv,maxDepth}=e.data;
     const pos=new Pos().load(fen);
     for(const m of moves) pos.make(m);
-    const res=engine.think(pos,time,multipv,info=>postMessage({type:"info",id,info}));
+    const res=engine.think(pos,time,multipv,info=>postMessage({type:"info",id,info}),maxDepth);
     postMessage({type:"done",id,info:res});
   };
 }

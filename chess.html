@@ -164,7 +164,7 @@ input, select {
 <div class="container">
 
 <h1>♟ Шахматный помощник</h1>
-<p class="muted" style="margin-top:-6px">Повторяй здесь ходы из партии с ботом — помощник подскажет лучший ответ. <a href="index.html">← Dota Party</a></p>
+<p class="muted" style="margin-top:-6px">Играй с ботом прямо здесь или повторяй ходы из партии в другом приложении — помощник покажет лучший ход стрелкой. <a href="index.html">← Dota Party</a></p>
 <p class="muted" style="margin-top:-8px">Хотите стрелки прямо на chess.com / lichess в партиях с ботами? Поставьте Tampermonkey и <a href="chess-helper.user.js">скрипт-помощник</a>.</p>
 
 <div class="layout">
@@ -210,7 +210,23 @@ input, select {
 
     <h3>Настройки</h3>
     <div class="row">
-      <label>Время на расчёт:</label>
+      <label><input type="checkbox" id="botMode" checked onchange="saveSettings(); afterChange()"> 🤖 Играть с ботом здесь (бот ходит сам)</label>
+    </div>
+    <div class="row">
+      <label>Сила бота:</label>
+      <select id="botLevel" onchange="saveSettings()">
+        <option value="1">1 — новичок</option>
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8 — максимум</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Время на подсказку:</label>
       <select id="thinkTime" onchange="saveSettings()">
         <option value="500">0.5 с</option>
         <option value="1000">1 с</option>
@@ -820,7 +836,7 @@ Engine.prototype.pv=function(pos,first,maxLen){
 };
 
 // итеративное углубление с несколькими вариантами (multipv)
-Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
+Engine.prototype.think=function(pos,timeMs,multipv,onInfo,maxDepth){
   const start=Date.now();
   this.deadline=start+timeMs; this.stop=false; this.nodes=0;
   for(let i=0;i<4096;i++) this.history[i]>>=2;
@@ -828,7 +844,7 @@ Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
   if(!root.length) return null;
   let order=root.map(m=>({m,score:0}));
   let result=null;
-  for(let d=1;d<=60;d++){
+  for(let d=1;d<=(maxDepth||60);d++){
     this.rootDepth=d;
     const k=Math.min(multipv,order.length);
     const res=[];
@@ -867,10 +883,10 @@ Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
 if(typeof importScripts==="function"){
   const engine=new Engine();
   self.onmessage=e=>{
-    const {id,fen,moves,time,multipv}=e.data;
+    const {id,fen,moves,time,multipv,maxDepth}=e.data;
     const pos=new Pos().load(fen);
     for(const m of moves) pos.make(m);
-    const res=engine.think(pos,time,multipv,info=>postMessage({type:"info",id,info}));
+    const res=engine.think(pos,time,multipv,info=>postMessage({type:"info",id,info}),maxDepth);
     postMessage({type:"done",id,info:res});
   };
 }
@@ -900,6 +916,8 @@ function loadSettings(){
     if(s.multipv) document.getElementById("multiPv").value=s.multipv;
     if(typeof s.auto==="boolean") document.getElementById("autoHint").checked=s.auto;
     if(typeof s.ru==="boolean") document.getElementById("ruNotation").checked=s.ru;
+    if(typeof s.bot==="boolean") document.getElementById("botMode").checked=s.bot;
+    if(s.level) document.getElementById("botLevel").value=s.level;
   }catch(e){}
 }
 function saveSettings(){
@@ -909,7 +927,9 @@ function saveSettings(){
       time:document.getElementById("thinkTime").value,
       multipv:document.getElementById("multiPv").value,
       auto:document.getElementById("autoHint").checked,
-      ru:document.getElementById("ruNotation").checked
+      ru:document.getElementById("ruNotation").checked,
+      bot:document.getElementById("botMode").checked,
+      level:document.getElementById("botLevel").value
     }));
   }catch(e){}
 }
@@ -1004,6 +1024,7 @@ function render(){
   // статус
   if(over) statusEl.textContent="🏁 "+over;
   else if(pos.side===myColor) statusEl.textContent="🟢 Ваш ход"+(pos.inCheck()?" — вам шах!":"");
+  else if(botMode()) statusEl.textContent="🤖 Бот думает…";
   else statusEl.textContent="🤖 Ход бота — повторите его ход на доске или введите ниже";
 
   renderHint();
@@ -1052,8 +1073,9 @@ function renderHint(){
   const valid=hint&&hintFor===moves.length&&!over;
   playBtn.disabled=!valid;
   if(!valid){
-    best.textContent=over?"—":(searching?"Думаю…":"—");
-    ev.textContent=""; di.textContent=searching?"":"";
+    const botThinking=botMode()&&pos.side!==myColor;
+    best.textContent=(searching&&!over&&!botThinking)?"Думаю…":"—";
+    ev.textContent=""; di.textContent="";
     setEvalBar(null);
     return;
   }
@@ -1099,7 +1121,7 @@ function renderMoves(){
 
 // ---- ходы ----
 function onSquare(s){
-  if(over) return;
+  if(over||(botMode()&&pos.side!==myColor)) return;
   if(sel>=0){
     const cand=legalMoves.filter(m=>mFrom(m)===sel&&mTo(m)===s);
     if(cand.length>1){ askPromo(cand); return; }
@@ -1143,7 +1165,9 @@ function playBest(){
 function undo(){
   if(!moves.length) return;
   stopSearch();
-  pos.unmake(); moves.pop(); sans.pop();
+  // в игре с ботом откатываем до своего хода
+  const n=(botMode()&&pos.side===myColor&&moves.length>=2)?2:1;
+  for(let i=0;i<n;i++){ pos.unmake(); moves.pop(); sans.pop(); }
   lastMove=moves[moves.length-1]||0; sel=-1;
   afterChange();
 }
@@ -1161,9 +1185,12 @@ function afterChange(){
 }
 
 function analyzeIfNeeded(){
-  if(!over&&pos.side===myColor&&document.getElementById("autoHint").checked) analyze();
+  if(!over&&botMode()&&pos.side!==myColor) botMove();
+  else if(!over&&pos.side===myColor&&document.getElementById("autoHint").checked) analyze();
   else render();
 }
+
+function botMode(){ return document.getElementById("botMode").checked; }
 
 // ---- ввод хода текстом ----
 function normMove(s){
@@ -1175,7 +1202,7 @@ function normMove(s){
 function enterMove(){
   const inp=document.getElementById("moveInput");
   const raw=inp.value.trim();
-  if(!raw||over) return;
+  if(!raw||over||(botMode()&&pos.side!==myColor)) return;
   const t=normMove(raw);
   let found=null;
   const coord=t.match(/^([a-h][1-8])([a-h][1-8])([qrbnQRBN])?$/);
@@ -1202,18 +1229,35 @@ function getWorker(){
     const src=document.getElementById("engine").textContent;
     const url=URL.createObjectURL(new Blob([src],{type:"application/javascript"}));
     worker=new Worker(url);
-    worker.onmessage=onEngineMsg;
     worker.onerror=()=>{ worker=null; };
   }catch(e){ worker=null; }
   return worker;
 }
 
-function onEngineMsg(e){
-  const d=e.data;
-  if(d.id!==searchId) return;
-  if(d.type==="done") searching=false;
-  if(d.info){ hint=d.info; hintFor=moves.length; }
-  render();
+// onInfo вызывается по ходу расчёта, onDone — с итоговым результатом
+function runEngine(opts,onInfo,onDone){
+  stopSearch();
+  const id=searchId;
+  searching=true;
+  const w=getWorker();
+  if(w){
+    w.onmessage=e=>{
+      const d=e.data;
+      if(d.id!==id) return;
+      if(d.type==="done"){ searching=false; onDone(d.info); }
+      else if(onInfo) onInfo(d.info);
+    };
+    w.postMessage({id,fen:startFen,moves:moves.slice(),...opts});
+  }else{
+    // запасной вариант без Worker — считаем в основном потоке
+    setTimeout(()=>{
+      if(id!==searchId) return;
+      const res=new Engine().think(pos.clone(),opts.time,opts.multipv,null,opts.maxDepth);
+      if(id!==searchId) return;
+      searching=false;
+      onDone(res);
+    },30);
+  }
 }
 
 function stopSearch(){
@@ -1224,27 +1268,45 @@ function stopSearch(){
 
 function analyze(){
   if(over) return;
-  stopSearch();
-  const id=searchId;
-  const time=+document.getElementById("thinkTime").value;
-  const multipv=+document.getElementById("multiPv").value;
-  const w=getWorker();
-  searching=true;
+  const show=info=>{ if(info){ hint=info; hintFor=moves.length; } render(); };
+  runEngine({
+    time:+document.getElementById("thinkTime").value,
+    multipv:+document.getElementById("multiPv").value
+  },show,show);
   hint=null;
   render();
-  if(w){
-    w.postMessage({id,fen:startFen,moves:moves.slice(),time,multipv});
-  }else{
-    // запасной вариант без Worker — считаем в основном потоке
-    setTimeout(()=>{
-      if(id!==searchId) return;
-      const res=new Engine().think(pos.clone(),time,multipv);
-      if(id!==searchId) return;
-      searching=false;
-      if(res){ hint=res; hintFor=moves.length; }
-      render();
-    },30);
-  }
+}
+
+// уровни бота: глубина, сколько вариантов рассматривает, допустимая потеря (в сантипешках)
+// и шанс «зевнуть» случайным ходом
+const BOT_LEVELS={
+  1:{maxDepth:1, multipv:5, margin:400, blunder:.30, time:300},
+  2:{maxDepth:2, multipv:4, margin:200, blunder:.15, time:400},
+  3:{maxDepth:3, multipv:4, margin:120, blunder:.06, time:500},
+  4:{maxDepth:4, multipv:3, margin:60,  blunder:.02, time:600},
+  5:{maxDepth:5, multipv:3, margin:30,  blunder:0,   time:800},
+  6:{maxDepth:7, multipv:2, margin:15,  blunder:0,   time:1000},
+  7:{maxDepth:0, multipv:1, margin:0,   blunder:0,   time:1500},
+  8:{maxDepth:0, multipv:1, margin:0,   blunder:0,   time:3000}
+};
+
+function botMove(){
+  const lv=BOT_LEVELS[document.getElementById("botLevel").value]||BOT_LEVELS[3];
+  const ply=moves.length, started=Date.now();
+  hint=null;
+  render();
+  runEngine({time:lv.time, multipv:lv.multipv, maxDepth:lv.maxDepth||undefined},null,res=>{
+    if(!res||moves.length!==ply) return;
+    let m;
+    if(Math.random()<lv.blunder) m=legalMoves[Math.floor(Math.random()*legalMoves.length)];
+    else{
+      const best=res.lines[0].score;
+      const ok=res.lines.filter(l=>best-l.score<=lv.margin);
+      m=ok[Math.floor(Math.random()*ok.length)].m;
+    }
+    // небольшая пауза, чтобы ход бота было видно
+    setTimeout(()=>{ if(moves.length===ply&&!over) playMove(m); },Math.max(0,400-(Date.now()-started)));
+  });
 }
 
 // ---- управление ----
