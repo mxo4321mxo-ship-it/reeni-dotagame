@@ -39,13 +39,20 @@ if not exist "%IMG%" (
 )
 
 echo.
-echo Режим: 1 - заливка, 2 - только контуры (быстрее)
+echo Режим:
+echo   1 - заливка + обводка краёв (точнее всего)
+echo   2 - только контуры (быстрее)
+echo   3 - фото с полутонами
 set "MODE=1"
 set /p "MODE=Выбери режим [1]: "
 set "ARGS="
 if "%MODE%"=="2" set "ARGS=--mode outline"
+if "%MODE%"=="3" set "ARGS=--dither"
 
-set /p "EXTRA=Доп. опции (например --step 2 --speed 0.05), или просто Enter: "
+echo.
+echo Поставь в программе толщину кисти 2-3 px.
+set "EXTRA="
+set /p "EXTRA=Доп. опции (например --step 1 или --delay 0.02), или просто Enter: "
 
 echo.
 %PY% draw_image.py "%IMG%" %ARGS% %EXTRA%
