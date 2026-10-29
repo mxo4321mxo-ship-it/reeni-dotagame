@@ -38,21 +38,40 @@ if not exist "%IMG%" (
     exit /b 1
 )
 
-echo.
-echo Режим:
-echo   1 - заливка + обводка краёв (точнее всего)
-echo   2 - только контуры (быстрее)
-echo   3 - фото с полутонами
-set "MODE=1"
-set /p "MODE=Выбери режим [1]: "
 set "ARGS="
-if "%MODE%"=="2" set "ARGS=--mode outline"
-if "%MODE%"=="3" set "ARGS=--dither"
 
 echo.
-echo Поставь в программе толщину кисти 2-3 px.
+echo Где рисуем?
+echo   1 - Roblox
+echo   2 - Paint / сайт / другое
+set "WHERE=1"
+set /p "WHERE=Выбери [1]: "
+if "%WHERE%"=="1" set "ARGS=--roblox"
+
+echo.
+echo Рисунок:
+echo   1 - цветной
+echo   2 - чёрно-белый
+echo   3 - только контуры (чёрные)
+set "KIND=1"
+set /p "KIND=Выбери [1]: "
+if "%KIND%"=="1" (
+    set "NCOL=16"
+    set /p "NCOL=Сколько цветов? Больше = точнее, но дольше [16]: "
+)
+if "%KIND%"=="1" set "ARGS=%ARGS% --colors %NCOL%"
+if "%KIND%"=="3" set "ARGS=%ARGS% --mode outline"
+
+echo.
+echo Холст в игре - сетка из клеток (как в Starving Artists)?
+echo Если да - введи размер сетки, например: 32 32
+set "GRID="
+set /p "GRID=Размер сетки или просто Enter, если холст обычный: "
+if defined GRID set "ARGS=%ARGS% --grid %GRID%"
+if not defined GRID echo Поставь в игре толщину кисти на 1 больше шага: 3 px.
+
 set "EXTRA="
-set /p "EXTRA=Доп. опции (например --step 1 или --delay 0.02), или просто Enter: "
+set /p "EXTRA=Доп. опции (например --step 3 или --delay 0.03), или просто Enter: "
 
 echo.
 %PY% draw_image.py "%IMG%" %ARGS% %EXTRA%
