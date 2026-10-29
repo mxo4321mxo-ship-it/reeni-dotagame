@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Шахматный помощник</title>
+
+<style>
+* { box-sizing:border-box; }
+
+html { background:#0f0f0f; }
+
+body {
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:linear-gradient(135deg,#0f0f0f,#200000);
+  color:white;
+  text-align:center;
+  min-height:100vh;
+}
+
+.container { padding:16px; max-width:980px; margin:0 auto; }
+
+h1 { margin:6px 0 12px; }
+
+a { color:#ff8a8a; }
+
+button {
+  padding:10px 16px;
+  margin:4px;
+  border:none;
+  border-radius:10px;
+  background:crimson;
+  color:white;
+  font-size:15px;
+  cursor:pointer;
+}
+button:disabled { opacity:.45; cursor:default; }
+button.ghost { background:#3a1a1a; }
+button.on { background:#2e8b57; }
+
+input, select {
+  padding:9px;
+  margin:4px;
+  border-radius:8px;
+  border:none;
+  font-size:15px;
+}
+
+.layout {
+  display:flex;
+  flex-wrap:wrap;
+  gap:18px;
+  justify-content:center;
+  align-items:flex-start;
+}
+
+.panel {
+  background:rgba(255,255,255,.06);
+  border-radius:14px;
+  padding:12px;
+  width:min(100%, 380px);
+  text-align:left;
+}
+.panel h3 { margin:4px 0 8px; font-size:16px; }
+
+/* доска */
+.boardWrap { display:flex; gap:6px; --sz:min(calc(100vw - 58px), 520px); }
+
+.evalbar {
+  width:16px;
+  height:var(--sz);
+  background:#222;
+  border-radius:6px;
+  overflow:hidden;
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+}
+#evalFill { background:#eee; height:50%; transition:height .3s; }
+.evalbar.meBlack #evalFill { background:#555; }
+.evalbar.meBlack { background:#ddd; }
+
+#board {
+  width:var(--sz);
+  height:var(--sz);
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  border-radius:6px;
+  overflow:hidden;
+  position:relative;
+  user-select:none;
+  -webkit-user-select:none;
+  touch-action:manipulation;
+  box-shadow:0 6px 24px rgba(0,0,0,.6);
+}
+
+.sq {
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:calc(var(--sz) / 9.5);
+  line-height:1;
+  cursor:pointer;
+}
+.sq.light { background:#f0d9b5; }
+.sq.dark  { background:#b58863; }
+.sq.last::after { content:""; position:absolute; inset:0; background:rgba(255,215,0,.38); }
+.sq.sel::after  { content:""; position:absolute; inset:0; background:rgba(80,200,120,.55); }
+.sq.check { background:radial-gradient(circle, #ff3030 0%, #c00000 45%, transparent 75%) !important; }
+.sq .dot { position:absolute; width:28%; height:28%; border-radius:50%; background:rgba(0,0,0,.28); z-index:2; }
+.sq .ring { position:absolute; inset:4%; border-radius:50%; border:calc(var(--sz) / 110) solid rgba(0,0,0,.3); z-index:2; }
+
+.pc { position:relative; z-index:1; }
+.pc.w { color:#fff; text-shadow:0 0 2px #000, 0 0 2px #000, 0 1px 2px #000; }
+.pc.b { color:#141414; text-shadow:0 0 1px #fff8, 0 1px 1px #0006; }
+
+.coord { position:absolute; font-size:calc(var(--sz) / 42); font-weight:bold; z-index:1; }
+.coord.f { right:3px; bottom:2px; }
+.coord.r { left:3px; top:2px; }
+.sq.light .coord { color:#b58863; }
+.sq.dark .coord { color:#f0d9b5; }
+
+#arrows { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:3; }
+
+/* панели */
+#status { font-size:17px; font-weight:bold; margin:0 0 6px; min-height:22px; }
+#hintBox { background:rgba(0,0,0,.35); border-radius:10px; padding:10px; margin:8px 0; min-height:70px; }
+#bestMove { font-size:26px; font-weight:bold; color:#7dff9b; }
+#bestEval { font-size:15px; color:#ddd; margin-left:6px; }
+.line { padding:5px 6px; border-radius:6px; cursor:pointer; font-size:14px; }
+.line:hover { background:rgba(255,255,255,.08); }
+.line b { display:inline-block; min-width:58px; }
+.line .pv { color:#bbb; }
+#depthInfo { font-size:12px; color:#999; margin-top:4px; }
+
+.row { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:4px 0; }
+.row label { font-size:14px; }
+
+#moveList { font-family:monospace; font-size:14px; max-height:180px; overflow:auto; line-height:1.6; }
+#moveList span { white-space:nowrap; margin-right:8px; }
+
+#fen { width:100%; font-family:monospace; font-size:12px; }
+
+.colorPick button { flex:1; }
+
+#promo {
+  position:fixed; inset:0; background:rgba(0,0,0,.6);
+  display:flex; align-items:center; justify-content:center; z-index:10;
+}
+#promo .box { background:#2a1010; padding:14px; border-radius:14px; }
+#promo button { font-size:40px; padding:6px 14px; background:#f0d9b5; }
+
+.hidden { display:none !important; }
+.muted { color:#aaa; font-size:13px; }
+#msg { color:#ffb3b3; font-size:13px; min-height:16px; }
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>♟ Шахматный помощник</h1>
+<p class="muted" style="margin-top:-6px">Повторяй здесь ходы из партии с ботом — помощник подскажет лучший ответ. <a href="index.html">← Dota Party</a></p>
+
+<div class="layout">
+
+  <div>
+    <div class="boardWrap">
+      <div class="evalbar" id="evalbar"><div id="evalFill"></div></div>
+      <div id="board"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row colorPick">
+      <label style="width:100%">Я играю за:</label>
+      <button id="btnWhite" onclick="setMyColor(0)">⚪ Белых</button>
+      <button id="btnBlack" onclick="setMyColor(8)">⚫ Чёрных</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div id="hintBox">
+      <div><span id="bestMove">—</span><span id="bestEval"></span></div>
+      <div id="lines"></div>
+      <div id="depthInfo"></div>
+    </div>
+
+    <div class="row">
+      <button onclick="analyze()">💡 Подсказка</button>
+      <button id="btnPlayBest" onclick="playBest()" disabled>▶ Сделать ход</button>
+    </div>
+
+    <div class="row">
+      <input id="moveInput" placeholder="Ход бота: e5, Кf6, e7e5" style="flex:1;min-width:0" autocomplete="off">
+      <button onclick="enterMove()">Ввести</button>
+    </div>
+    <div id="msg"></div>
+
+    <div class="row">
+      <button class="ghost" onclick="undo()">↩ Назад</button>
+      <button class="ghost" onclick="flip()">🔄 Перевернуть</button>
+      <button class="ghost" onclick="newGame()">🆕 Новая партия</button>
+    </div>
+
+    <h3>Настройки</h3>
+    <div class="row">
+      <label>Время на расчёт:</label>
+      <select id="thinkTime" onchange="saveSettings()">
+        <option value="500">0.5 с</option>
+        <option value="1000">1 с</option>
+        <option value="2000" selected>2 с</option>
+        <option value="4000">4 с</option>
+        <option value="8000">8 с</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Вариантов:</label>
+      <select id="multiPv" onchange="saveSettings(); analyzeIfNeeded()">
+        <option value="1">1</option>
+        <option value="3" selected>3</option>
+        <option value="5">5</option>
+      </select>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="autoHint" checked onchange="saveSettings(); analyzeIfNeeded()"> Подсказывать автоматически на моём ходу</label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="ruNotation" checked onchange="saveSettings(); render()"> Русская нотация (Кр, Ф, Л, С, К)</label>
+    </div>
+
+    <h3>Ходы</h3>
+    <div id="moveList"></div>
+
+    <h3>Позиция (FEN)</h3>
+    <input id="fen" autocomplete="off">
+    <div class="row">
+      <button class="ghost" onclick="loadFen()">Загрузить FEN</button>
+      <button class="ghost" onclick="copyFen()">Копировать</button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div id="promo" class="hidden">
+  <div class="box">
+    <div style="margin-bottom:8px">Превращение пешки</div>
+    <div id="promoBtns"></div>
+  </div>
+</div>
+
+<!--
+  Движок: генерация ходов + поиск (альфа-бета, итеративное углубление,
+  таблица транспозиций, quiescence). Этот же код запускается в Web Worker,
+  чтобы интерфейс не зависал во время расчёта.
+-->
+<script id="engine">
+const P=1, N=2, B=3, R=4, Q=5, K=6, BL=8;
+const F_EP=1, F_CASTLE=2, F_DOUBLE=4;
+const VAL=[0,100,320,330,500,900,0];
+const PHASE=[0,0,1,1,2,4,0];
+const MATE=30000, INF=32000, MAXPLY=64;
+const START_FEN="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+function mv(f,t,pr,fl){ return f|(t<<6)|(pr<<12)|(fl<<15); }
+const mFrom=m=>m&63, mTo=m=>(m>>6)&63, mPromo=m=>(m>>12)&7, mFlags=m=>(m>>15)&7;
+
+function sqName(s){ return "abcdefgh"[s&7]+(8-(s>>3)); }
+function sqIndex(n){ return (8-(+n[1]))*8+(n.charCodeAt(0)-97); }
+
+// заранее посчитанные ходы коня, короля и лучи
+const KN=[], KG=[], RAYS=[];
+const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+for(let s=0;s<64;s++){
+  const r=s>>3, f=s&7;
+  KN[s]=[]; KG[s]=[]; RAYS[s]=[];
+  for(const [dr,df] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+    const rr=r+dr, ff=f+df;
+    if(rr>=0&&rr<8&&ff>=0&&ff<8) KN[s].push(rr*8+ff);
+  }
+  for(const [dr,df] of DIRS){
+    const rr=r+dr, ff=f+df;
+    if(rr>=0&&rr<8&&ff>=0&&ff<8) KG[s].push(rr*8+ff);
+    const ray=[];
+    let a=r+dr, c=f+df;
+    while(a>=0&&a<8&&c>=0&&c<8){ ray.push(a*8+c); a+=dr; c+=df; }
+    RAYS[s].push(ray);
+  }
+}
+
+// маска прав рокировки: какие права теряются, если с поля/на поле ходят
+const CASTLE_MASK=new Array(64).fill(15);
+CASTLE_MASK[60]=15&~3; CASTLE_MASK[63]=15&~1; CASTLE_MASK[56]=15&~2;
+CASTLE_MASK[4]=15&~12; CASTLE_MASK[7]=15&~4;  CASTLE_MASK[0]=15&~8;
+
+// хеши Зобриста
+let seed=0x9E3779B9;
+function rnd(){ seed^=seed<<13; seed^=seed>>>17; seed^=seed<<5; return seed|0; }
+const ZP=[]; for(let p=0;p<16;p++){ ZP[p]=[]; for(let s=0;s<64;s++) ZP[p][s]=rnd(); }
+const ZSIDE=rnd();
+const ZC=[]; for(let i=0;i<16;i++) ZC[i]=rnd();
+const ZEP=[]; for(let i=0;i<8;i++) ZEP[i]=rnd();
+
+// таблицы позиционной оценки (для белых, a8 = 0)
+const PST=[[],
+[ 0,0,0,0,0,0,0,0, 50,50,50,50,50,50,50,50, 10,10,20,30,30,20,10,10, 5,5,10,25,25,10,5,5,
+  0,0,0,20,20,0,0,0, 5,-5,-10,0,0,-10,-5,5, 5,10,10,-20,-20,10,10,5, 0,0,0,0,0,0,0,0],
+[ -50,-40,-30,-30,-30,-30,-40,-50, -40,-20,0,0,0,0,-20,-40, -30,0,10,15,15,10,0,-30, -30,5,15,20,20,15,5,-30,
+  -30,0,15,20,20,15,0,-30, -30,5,10,15,15,10,5,-30, -40,-20,0,5,5,0,-20,-40, -50,-40,-30,-30,-30,-30,-40,-50],
+[ -20,-10,-10,-10,-10,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,10,10,5,0,-10, -10,5,5,10,10,5,5,-10,
+  -10,0,10,10,10,10,0,-10, -10,10,10,10,10,10,10,-10, -10,5,0,0,0,0,5,-10, -20,-10,-10,-10,-10,-10,-10,-20],
+[ 0,0,0,0,0,0,0,0, 5,10,10,10,10,10,10,5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5,
+  -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, -5,0,0,0,0,0,0,-5, 0,0,0,5,5,0,0,0],
+[ -20,-10,-10,-5,-5,-10,-10,-20, -10,0,0,0,0,0,0,-10, -10,0,5,5,5,5,0,-10, -5,0,5,5,5,5,0,-5,
+  0,0,5,5,5,5,0,-5, -10,5,5,5,5,5,0,-10, -10,0,5,0,0,0,0,-10, -20,-10,-10,-5,-5,-10,-10,-20],
+[ -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30, -30,-40,-40,-50,-50,-40,-40,-30,
+  -20,-30,-30,-40,-40,-30,-30,-20, -10,-20,-20,-20,-20,-20,-20,-10, 20,20,0,0,0,0,20,20, 20,30,10,0,0,10,30,20]
+];
+const KING_END=[ -50,-40,-30,-20,-20,-30,-40,-50, -30,-20,-10,0,0,-10,-20,-30, -30,-10,20,30,30,20,-10,-30, -30,-10,30,40,40,30,-10,-30,
+  -30,-10,30,40,40,30,-10,-30, -30,-10,20,30,30,20,-10,-30, -30,-30,0,0,0,0,-30,-30, -50,-30,-30,-30,-30,-30,-30,-50];
+const PASSED_MG=[0,5,10,15,25,40,0], PASSED_EG=[0,10,20,35,60,100,0];
+
+const TT_SIZE=1<<19, TT_MASK=TT_SIZE-1;
+const TT_EXACT=1, TT_LOWER=2, TT_UPPER=3;
+
+function Pos(){
+  this.b=new Int8Array(64);
+  this.side=0; this.castle=0; this.ep=-1; this.half=0; this.full=1;
+  this.kings=[60,4]; this.hash=0; this.hist=[];
+}
+
+Pos.prototype.load=function(fen){
+  const parts=fen.trim().split(/\s+/);
+  const rows=(parts[0]||"").split("/");
+  if(rows.length!==8) throw new Error("FEN: нужно 8 рядов");
+  this.b.fill(0);
+  let wk=0, bk=0;
+  for(let r=0;r<8;r++){
+    let f=0;
+    for(const ch of rows[r]){
+      if(ch>="1"&&ch<="8"){ f+=+ch; continue; }
+      const t="pnbrqk".indexOf(ch.toLowerCase())+1;
+      if(!t||f>7) throw new Error("FEN: неверный символ "+ch);
+      const p=t|(ch===ch.toLowerCase()?BL:0);
+      this.b[r*8+f]=p;
+      if(p===K){ this.kings[0]=r*8+f; wk++; }
+      if(p===(K|BL)){ this.kings[1]=r*8+f; bk++; }
+      f++;
+    }
+    if(f!==8) throw new Error("FEN: в ряду должно быть 8 полей");
+  }
+  if(wk!==1||bk!==1) throw new Error("FEN: нужен ровно один король каждого цвета");
+  this.side=parts[1]==="b"?BL:0;
+  const c=parts[2]||"-";
+  this.castle=(c.includes("K")?1:0)|(c.includes("Q")?2:0)|(c.includes("k")?4:0)|(c.includes("q")?8:0);
+  this.ep=(parts[3]&&parts[3]!=="-")?sqIndex(parts[3]):-1;
+  this.half=+(parts[4]||0)||0;
+  this.full=+(parts[5]||1)||1;
+  this.hist=[];
+  this.hash=this.computeHash();
+  return this;
+};
+
+Pos.prototype.fen=function(){
+  let s="";
+  for(let r=0;r<8;r++){
+    let e=0;
+    for(let f=0;f<8;f++){
+      const p=this.b[r*8+f];
+      if(!p){ e++; continue; }
+      if(e){ s+=e; e=0; }
+      const ch=" pnbrqk"[p&7];
+      s+=(p&BL)?ch:ch.toUpperCase();
+    }
+    if(e) s+=e;
+    if(r<7) s+="/";
+  }
+  let c=(this.castle&1?"K":"")+(this.castle&2?"Q":"")+(this.castle&4?"k":"")+(this.castle&8?"q":"");
+  return s+" "+(this.side?"b":"w")+" "+(c||"-")+" "+(this.ep>=0?sqName(this.ep):"-")+" "+this.half+" "+this.full;
+};
+
+Pos.prototype.computeHash=function(){
+  let h=0;
+  for(let s=0;s<64;s++) if(this.b[s]) h^=ZP[this.b[s]][s];
+  if(this.side) h^=ZSIDE;
+  h^=ZC[this.castle];
+  if(this.ep>=0) h^=ZEP[this.ep&7];
+  return h;
+};
+
+Pos.prototype.clone=function(){
+  const p=new Pos();
+  p.b.set(this.b);
+  p.side=this.side; p.castle=this.castle; p.ep=this.ep; p.half=this.half; p.full=this.full;
+  p.kings=this.kings.slice(); p.hash=this.hash; p.hist=this.hist.slice();
+  return p;
+};
+
+Pos.prototype.attacked=function(sq,by){
+  const b=this.b, r=sq>>3, f=sq&7;
+  if(by===0){
+    if(r<7){ if(f>0&&b[sq+7]===P) return true; if(f<7&&b[sq+9]===P) return true; }
+  }else{
+    if(r>0){ if(f>0&&b[sq-9]===(P|BL)) return true; if(f<7&&b[sq-7]===(P|BL)) return true; }
+  }
+  const n=N|by, k=K|by, q=Q|by, rk=R|by, bs=B|by;
+  const kn=KN[sq]; for(let i=0;i<kn.length;i++) if(b[kn[i]]===n) return true;
+  const kg=KG[sq]; for(let i=0;i<kg.length;i++) if(b[kg[i]]===k) return true;
+  const rays=RAYS[sq];
+  for(let d=0;d<8;d++){
+    const ray=rays[d];
+    for(let i=0;i<ray.length;i++){
+      const p=b[ray[i]];
+      if(p){ if(p===q||(d<4?p===rk:p===bs)) return true; break; }
+    }
+  }
+  return false;
+};
+
+Pos.prototype.inCheck=function(){ return this.attacked(this.kings[this.side>>3],this.side^BL); };
+
+// псевдолегальные ходы; caps=true — только взятия и превращения (для quiescence)
+Pos.prototype.gen=function(caps){
+  const b=this.b, us=this.side, them=us^BL, out=[];
+  const promoTypes=caps?[Q]:[Q,R,B,N];
+  for(let s=0;s<64;s++){
+    const p=b[s];
+    if(!p||(p&BL)!==us) continue;
+    const t=p&7;
+    if(t===P){
+      const dir=us?8:-8, r=s>>3, f=s&7, to=s+dir, promo=(to>>3)===(us?7:0);
+      if(b[to]===0&&(!caps||promo)){
+        if(promo){ for(const pt of promoTypes) out.push(mv(s,to,pt,0)); }
+        else{
+          out.push(mv(s,to,0,0));
+          if(r===(us?1:6)&&b[to+dir]===0) out.push(mv(s,to+dir,0,F_DOUBLE));
+        }
+      }
+      for(let df=-1;df<=1;df+=2){
+        if(f+df<0||f+df>7) continue;
+        const c=to+df, q=b[c];
+        if(q&&(q&BL)===them){
+          if(promo){ for(const pt of promoTypes) out.push(mv(s,c,pt,0)); }
+          else out.push(mv(s,c,0,0));
+        }else if(c===this.ep) out.push(mv(s,c,0,F_EP));
+      }
+    }else if(t===N||t===K){
+      const tg=t===N?KN[s]:KG[s];
+      for(let i=0;i<tg.length;i++){
+        const to=tg[i], q=b[to];
+        if(!q){ if(!caps) out.push(mv(s,to,0,0)); }
+        else if((q&BL)===them) out.push(mv(s,to,0,0));
+      }
+      if(t===K&&!caps){
+        if(us===0&&s===60){
+          if((this.castle&1)&&!b[61]&&!b[62]&&b[63]===R&&!this.attacked(60,BL)&&!this.attacked(61,BL)&&!this.attacked(62,BL)) out.push(mv(60,62,0,F_CASTLE));
+          if((this.castle&2)&&!b[59]&&!b[58]&&!b[57]&&b[56]===R&&!this.attacked(60,BL)&&!this.attacked(59,BL)&&!this.attacked(58,BL)) out.push(mv(60,58,0,F_CASTLE));
+        }else if(us===BL&&s===4){
+          if((this.castle&4)&&!b[5]&&!b[6]&&b[7]===(R|BL)&&!this.attacked(4,0)&&!this.attacked(5,0)&&!this.attacked(6,0)) out.push(mv(4,6,0,F_CASTLE));
+          if((this.castle&8)&&!b[3]&&!b[2]&&!b[1]&&b[0]===(R|BL)&&!this.attacked(4,0)&&!this.attacked(3,0)&&!this.attacked(2,0)) out.push(mv(4,2,0,F_CASTLE));
+        }
+      }
+    }else{
+      const d0=t===B?4:0, d1=t===R?4:8, rays=RAYS[s];
+      for(let d=d0;d<d1;d++){
+        const ray=rays[d];
+        for(let i=0;i<ray.length;i++){
+          const to=ray[i], q=b[to];
+          if(!q){ if(!caps) out.push(mv(s,to,0,0)); continue; }
+          if((q&BL)===them) out.push(mv(s,to,0,0));
+          break;
+        }
+      }
+    }
+  }
+  return out;
+};
+
+Pos.prototype.make=function(m){
+  const b=this.b, from=mFrom(m), to=mTo(m), pr=mPromo(m), fl=mFlags(m), us=this.side;
+  const p=b[from];
+  let cap=b[to], capSq=to;
+  this.hist.push({m, cap:0, capSq:0, castle:this.castle, ep:this.ep, half:this.half, hash:this.hash});
+  const h=this.hist[this.hist.length-1];
+  let hash=this.hash^ZP[p][from];
+  if(fl&F_EP){ capSq=to+(us?-8:8); cap=b[capSq]; b[capSq]=0; }
+  if(cap) hash^=ZP[cap][capSq];
+  h.cap=cap; h.capSq=capSq;
+  b[from]=0;
+  const placed=pr?(pr|us):p;
+  b[to]=placed; hash^=ZP[placed][to];
+  if(fl&F_CASTLE){
+    let rf, rt;
+    if(to===62){rf=63;rt=61;} else if(to===58){rf=56;rt=59;} else if(to===6){rf=7;rt=5;} else {rf=0;rt=3;}
+    const rk=b[rf]; b[rf]=0; b[rt]=rk; hash^=ZP[rk][rf]^ZP[rk][rt];
+  }
+  if((p&7)===K) this.kings[us>>3]=to;
+  hash^=ZC[this.castle];
+  this.castle&=CASTLE_MASK[from]&CASTLE_MASK[to];
+  hash^=ZC[this.castle];
+  if(this.ep>=0) hash^=ZEP[this.ep&7];
+  this.ep=(fl&F_DOUBLE)?(from+to)>>1:-1;
+  if(this.ep>=0) hash^=ZEP[this.ep&7];
+  this.half=((p&7)===P||cap)?0:this.half+1;
+  if(us) this.full++;
+  this.side=us^BL;
+  this.hash=hash^ZSIDE;
+};
+
+Pos.prototype.unmake=function(){
+  const h=this.hist.pop(), m=h.m, b=this.b;
+  const from=mFrom(m), to=mTo(m), fl=mFlags(m);
+  this.side^=BL;
+  const us=this.side;
+  let p=b[to];
+  if(mPromo(m)) p=P|us;
+  b[from]=p; b[to]=0;
+  b[h.capSq]=h.cap;
+  if(fl&F_CASTLE){
+    let rf, rt;
+    if(to===62){rf=63;rt=61;} else if(to===58){rf=56;rt=59;} else if(to===6){rf=7;rt=5;} else {rf=0;rt=3;}
+    b[rf]=b[rt]; b[rt]=0;
+  }
+  if((p&7)===K) this.kings[us>>3]=from;
+  this.castle=h.castle; this.ep=h.ep; this.half=h.half; this.hash=h.hash;
+  if(us) this.full--;
+};
+
+Pos.prototype.makeNull=function(){
+  this.hist.push({m:0, cap:0, capSq:0, castle:this.castle, ep:this.ep, half:this.half, hash:this.hash});
+  let hash=this.hash;
+  if(this.ep>=0) hash^=ZEP[this.ep&7];
+  this.ep=-1; this.half++;
+  this.side^=BL;
+  this.hash=hash^ZSIDE;
+};
+
+Pos.prototype.unmakeNull=function(){
+  const h=this.hist.pop();
+  this.side^=BL;
+  this.ep=h.ep; this.half=h.half; this.hash=h.hash;
+};
+
+Pos.prototype.legal=function(){
+  const out=[], us=this.side, ms=this.gen(false);
+  for(const m of ms){
+    this.make(m);
+    if(!this.attacked(this.kings[us>>3],this.side)) out.push(m);
+    this.unmake();
+  }
+  return out;
+};
+
+Pos.prototype.isRep=function(){
+  const h=this.hist, stop=Math.max(0,h.length-this.half);
+  for(let i=h.length-2;i>=stop;i-=2) if(h[i].hash===this.hash) return true;
+  return false;
+};
+
+Pos.prototype.repCount=function(){
+  let n=1;
+  const h=this.hist, stop=Math.max(0,h.length-this.half);
+  for(let i=h.length-2;i>=stop;i-=2) if(h[i].hash===this.hash) n++;
+  return n;
+};
+
+Pos.prototype.insufficient=function(){
+  let minors=0;
+  for(let s=0;s<64;s++){
+    const t=this.b[s]&7;
+    if(t===P||t===R||t===Q) return false;
+    if(t===N||t===B) minors++;
+  }
+  return minors<=1;
+};
+
+Pos.prototype.hasPieces=function(us){
+  for(let s=0;s<64;s++){
+    const p=this.b[s];
+    if(p&&(p&BL)===us){ const t=p&7; if(t!==P&&t!==K) return true; }
+  }
+  return false;
+};
+
+// оценка позиции с точки зрения стороны, которая ходит
+Pos.prototype.evaluate=function(){
+  const b=this.b;
+  const wMax=[-1,-1,-1,-1,-1,-1,-1,-1], bMin=[8,8,8,8,8,8,8,8];
+  const wCnt=[0,0,0,0,0,0,0,0], bCnt=[0,0,0,0,0,0,0,0];
+  for(let s=8;s<56;s++){
+    const p=b[s];
+    if(p===P){ const f=s&7, r=s>>3; wCnt[f]++; if(r>wMax[f]) wMax[f]=r; }
+    else if(p===(P|BL)){ const f=s&7, r=s>>3; bCnt[f]++; if(r<bMin[f]) bMin[f]=r; }
+  }
+  let mg=0, eg=0, ph=0, wMat=0, bMat=0, wPawns=0, bPawns=0, wB=0, bB=0;
+  for(let s=0;s<64;s++){
+    const p=b[s];
+    if(!p) continue;
+    const t=p&7, white=!(p&BL), i=white?s:s^56;
+    let vm=VAL[t]+PST[t][i], ve=VAL[t]+(t===K?KING_END[i]:PST[t][i]);
+    ph+=PHASE[t];
+    const f=s&7, r=s>>3;
+    if(t===P){
+      if(white){
+        wPawns++;
+        if((f===0||bMin[f-1]>=r)&&bMin[f]>=r&&(f===7||bMin[f+1]>=r)){ vm+=PASSED_MG[6-r]; ve+=PASSED_EG[6-r]; }
+      }else{
+        bPawns++;
+        if((f===0||wMax[f-1]<=r)&&wMax[f]<=r&&(f===7||wMax[f+1]<=r)){ vm+=PASSED_MG[r-1]; ve+=PASSED_EG[r-1]; }
+      }
+    }else if(t!==K){
+      if(white) wMat+=VAL[t]; else bMat+=VAL[t];
+      if(t===B){ if(white) wB++; else bB++; }
+      if(t===R){
+        const own=white?wCnt[f]:bCnt[f], opp=white?bCnt[f]:wCnt[f];
+        if(!own){ const bonus=opp?8:16; vm+=bonus; ve+=bonus; }
+      }
+    }
+    if(white){ mg+=vm; eg+=ve; } else { mg-=vm; eg-=ve; }
+  }
+  for(let f=0;f<8;f++){
+    if(wCnt[f]>1){ mg-=10*(wCnt[f]-1); eg-=20*(wCnt[f]-1); }
+    if(bCnt[f]>1){ mg+=10*(bCnt[f]-1); eg+=20*(bCnt[f]-1); }
+    if(wCnt[f]&&(f===0||!wCnt[f-1])&&(f===7||!wCnt[f+1])){ mg-=10*wCnt[f]; eg-=15*wCnt[f]; }
+    if(bCnt[f]&&(f===0||!bCnt[f-1])&&(f===7||!bCnt[f+1])){ mg+=10*bCnt[f]; eg+=15*bCnt[f]; }
+  }
+  if(wB>=2){ mg+=30; eg+=50; }
+  if(bB>=2){ mg-=30; eg-=50; }
+  if(ph>24) ph=24;
+  let sc=((mg*ph+eg*(24-ph))/24)|0;
+
+  // в эндшпиле с большим перевесом — прижимать короля к краю (помогает ставить мат)
+  if(ph<=8){
+    const diff=(wMat+wPawns*100)-(bMat+bPawns*100);
+    if(diff>=400||diff<=-400){
+      const weak=diff>0?this.kings[1]:this.kings[0], strong=diff>0?this.kings[0]:this.kings[1];
+      const wr=weak>>3, wf=weak&7, sr=strong>>3, sf=strong&7;
+      const center=Math.max(3-wr,wr-4)+Math.max(3-wf,wf-4);
+      const dist=Math.abs(wr-sr)+Math.abs(wf-sf);
+      const bonus=10*center+4*(14-dist);
+      sc+=diff>0?bonus:-bonus;
+    }
+  }
+  // одной лёгкой фигурой без пешек не выиграть
+  if(sc>0&&wPawns===0&&wMat<=330) sc=0;
+  if(sc<0&&bPawns===0&&bMat<=330) sc=0;
+  return (this.side?-sc:sc)+10;
+};
+
+// ---------- поиск ----------
+function Engine(){
+  this.ttKey=new Int32Array(TT_SIZE);
+  this.ttMove=new Int32Array(TT_SIZE);
+  this.ttScore=new Int32Array(TT_SIZE);
+  this.ttDepth=new Int8Array(TT_SIZE);
+  this.ttFlag=new Uint8Array(TT_SIZE);
+  this.history=new Int32Array(4096);
+  this.killers=[];
+  for(let i=0;i<MAXPLY+2;i++) this.killers.push([0,0]);
+}
+
+Engine.prototype.checkTime=function(){
+  if(this.rootDepth>1&&Date.now()>=this.deadline) this.stop=true;
+};
+
+Engine.prototype.ttStore=function(pos,depth,score,flag,m,ply){
+  const i=pos.hash&TT_MASK;
+  if(score>MATE-500) score+=ply; else if(score<-MATE+500) score-=ply;
+  this.ttKey[i]=pos.hash; this.ttScore[i]=score; this.ttDepth[i]=depth; this.ttFlag[i]=flag;
+  if(m||this.ttKey[i]!==pos.hash) this.ttMove[i]=m;
+};
+
+Engine.prototype.order=function(pos,moves,ttm,ply){
+  const sc=new Int32Array(moves.length), b=pos.b;
+  const k=ply<MAXPLY?this.killers[ply]:[0,0];
+  for(let i=0;i<moves.length;i++){
+    const m=moves[i], from=mFrom(m), to=mTo(m), v=b[to];
+    if(m===ttm) sc[i]=2000000;
+    else if(v) sc[i]=1000000+(v&7)*100-(b[from]&7);
+    else if(mFlags(m)&F_EP) sc[i]=1000099;
+    else if(mPromo(m)) sc[i]=900000+mPromo(m);
+    else if(m===k[0]) sc[i]=800000;
+    else if(m===k[1]) sc[i]=700000;
+    else sc[i]=this.history[from*64+to];
+  }
+  return sc;
+};
+
+function pickNext(moves,sc,i){
+  let bi=i;
+  for(let j=i+1;j<moves.length;j++) if(sc[j]>sc[bi]) bi=j;
+  if(bi!==i){
+    const tm=moves[i]; moves[i]=moves[bi]; moves[bi]=tm;
+    const ts=sc[i]; sc[i]=sc[bi]; sc[bi]=ts;
+  }
+}
+
+Engine.prototype.qs=function(pos,alpha,beta,ply){
+  if((++this.nodes&1023)===0) this.checkTime();
+  if(this.stop) return 0;
+  const stand=pos.evaluate();
+  if(ply>=MAXPLY) return stand;
+  if(stand>=beta) return stand;
+  if(stand>alpha) alpha=stand;
+  const moves=pos.gen(true), sc=this.order(pos,moves,0,MAXPLY), us=pos.side;
+  for(let i=0;i<moves.length;i++){
+    pickNext(moves,sc,i);
+    const m=moves[i];
+    pos.make(m);
+    if(pos.attacked(pos.kings[us>>3],pos.side)){ pos.unmake(); continue; }
+    const s=-this.qs(pos,-beta,-alpha,ply+1);
+    pos.unmake();
+    if(this.stop) return 0;
+    if(s>alpha){ alpha=s; if(s>=beta) return s; }
+  }
+  return alpha;
+};
+
+Engine.prototype.search=function(pos,depth,alpha,beta,ply,doNull){
+  if((++this.nodes&1023)===0) this.checkTime();
+  if(this.stop) return 0;
+  if(ply>0){
+    if(pos.half>=100||pos.isRep()) return 0;
+    const ma=-MATE+ply, mb=MATE-ply-1;
+    if(alpha<ma) alpha=ma;
+    if(beta>mb) beta=mb;
+    if(alpha>=beta) return alpha;
+  }
+  const us=pos.side, inCheck=pos.attacked(pos.kings[us>>3],us^BL);
+  if(inCheck) depth++;
+  if(depth<=0) return this.qs(pos,alpha,beta,ply);
+  if(ply>=MAXPLY) return pos.evaluate();
+
+  const idx=pos.hash&TT_MASK;
+  let ttm=0;
+  if(this.ttFlag[idx]&&this.ttKey[idx]===pos.hash){
+    ttm=this.ttMove[idx];
+    if(ply>0&&this.ttDepth[idx]>=depth){
+      let s=this.ttScore[idx];
+      if(s>MATE-500) s-=ply; else if(s<-MATE+500) s+=ply;
+      const fl=this.ttFlag[idx];
+      if(fl===TT_EXACT) return s;
+      if(fl===TT_LOWER&&s>=beta) return s;
+      if(fl===TT_UPPER&&s<=alpha) return s;
+    }
+  }
+
+  const isPv=beta-alpha>1;
+  if(doNull&&!isPv&&!inCheck&&depth>=3&&beta<MATE-500&&pos.hasPieces(us)&&pos.evaluate()>=beta){
+    pos.makeNull();
+    const s=-this.search(pos,depth-3,-beta,-beta+1,ply+1,false);
+    pos.unmakeNull();
+    if(this.stop) return 0;
+    if(s>=beta) return beta;
+  }
+
+  const moves=pos.gen(false), sc=this.order(pos,moves,ttm,ply);
+  const kl=this.killers[ply];
+  let best=-INF, bestM=0, legal=0;
+  const origAlpha=alpha;
+  for(let i=0;i<moves.length;i++){
+    pickNext(moves,sc,i);
+    const m=moves[i];
+    const quiet=!pos.b[mTo(m)]&&!(mFlags(m)&F_EP)&&!mPromo(m);
+    pos.make(m);
+    if(pos.attacked(pos.kings[us>>3],pos.side)){ pos.unmake(); continue; }
+    legal++;
+    let s;
+    if(legal===1){
+      s=-this.search(pos,depth-1,-beta,-alpha,ply+1,true);
+    }else{
+      let red=0;
+      if(depth>=3&&legal>3&&quiet&&!inCheck&&m!==kl[0]&&m!==kl[1]&&!pos.attacked(pos.kings[pos.side>>3],us))
+        red=legal>8?2:1;
+      s=-this.search(pos,depth-1-red,-alpha-1,-alpha,ply+1,true);
+      if(s>alpha&&red) s=-this.search(pos,depth-1,-alpha-1,-alpha,ply+1,true);
+      if(s>alpha&&s<beta) s=-this.search(pos,depth-1,-beta,-alpha,ply+1,true);
+    }
+    pos.unmake();
+    if(this.stop) return 0;
+    if(s>best){
+      best=s; bestM=m;
+      if(s>alpha){
+        alpha=s;
+        if(s>=beta){
+          if(quiet){
+            if(kl[0]!==m){ kl[1]=kl[0]; kl[0]=m; }
+            this.history[mFrom(m)*64+mTo(m)]+=depth*depth;
+          }
+          break;
+        }
+      }
+    }
+  }
+  if(!legal) return inCheck?-MATE+ply:0;
+  this.ttStore(pos,depth,best,best>=beta?TT_LOWER:best>origAlpha?TT_EXACT:TT_UPPER,bestM,ply);
+  return best;
+};
+
+Engine.prototype.pv=function(pos,first,maxLen){
+  const line=[first];
+  pos.make(first);
+  let n=1;
+  while(n<maxLen){
+    const i=pos.hash&TT_MASK;
+    if(!this.ttFlag[i]||this.ttKey[i]!==pos.hash||!this.ttMove[i]) break;
+    const m=this.ttMove[i];
+    if(!pos.legal().includes(m)) break;
+    if(pos.isRep()) break;
+    line.push(m); pos.make(m); n++;
+  }
+  for(let j=0;j<n;j++) pos.unmake();
+  return line;
+};
+
+// итеративное углубление с несколькими вариантами (multipv)
+Engine.prototype.think=function(pos,timeMs,multipv,onInfo){
+  const start=Date.now();
+  this.deadline=start+timeMs; this.stop=false; this.nodes=0;
+  for(let i=0;i<4096;i++) this.history[i]>>=2;
+  const root=pos.legal();
+  if(!root.length) return null;
+  let order=root.map(m=>({m,score:0}));
+  let result=null;
+  for(let d=1;d<=60;d++){
+    this.rootDepth=d;
+    const k=Math.min(multipv,order.length);
+    const res=[];
+    for(let i=0;i<order.length;i++){
+      const m=order[i].m;
+      let alpha=-INF;
+      if(res.length>=k){ const sorted=res.map(x=>x.score).sort((a,b)=>b-a); alpha=sorted[k-1]; }
+      pos.make(m);
+      let s;
+      if(alpha===-INF) s=-this.search(pos,d-1,-INF,INF,1,true);
+      else{
+        s=-this.search(pos,d-1,-alpha-1,-alpha,1,true);
+        if(!this.stop&&s>alpha) s=-this.search(pos,d-1,-INF,-alpha,1,true);
+      }
+      pos.unmake();
+      if(this.stop) break;
+      res.push({m,score:s});
+    }
+    if(this.stop) break;
+    res.sort((a,b)=>b.score-a.score);
+    order=res;
+    result={
+      depth:d, nodes:this.nodes, time:Date.now()-start,
+      lines:res.slice(0,k).map(x=>({m:x.m, score:x.score, pv:this.pv(pos,x.m,Math.min(d+4,14))}))
+    };
+    if(onInfo) onInfo(result);
+    const top=Math.abs(res[0].score);
+    if(root.length===1&&d>=4) break;
+    if(top>MATE-500&&d>=(MATE-top)+2) break;
+    if(Date.now()-start>timeMs*0.55) break;
+  }
+  return result;
+};
+
+// запуск внутри Web Worker
+if(typeof importScripts==="function"){
+  const engine=new Engine();
+  self.onmessage=e=>{
+    const {id,fen,moves,time,multipv}=e.data;
+    const pos=new Pos().load(fen);
+    for(const m of moves) pos.make(m);
+    const res=engine.think(pos,time,multipv,info=>postMessage({type:"info",id,info}));
+    postMessage({type:"done",id,info:res});
+  };
+}
+</script>
+
+<script>
+// ---------- интерфейс ----------
+const GLYPH={1:"♟",2:"♞",3:"♝",4:"♜",5:"♛",6:"♚"};
+const VS="\uFE0E";
+
+let startFen=START_FEN, pos=new Pos().load(startFen);
+let moves=[], sans=[], legalMoves=pos.legal();
+let myColor=0, flipped=false, sel=-1, lastMove=0, over="";
+let hint=null, hintFor=-1, worker=null, searchId=0, searching=false;
+let pendingPromo=null;
+
+const boardEl=document.getElementById("board");
+const statusEl=document.getElementById("status");
+const msgEl=document.getElementById("msg");
+
+// ---- настройки ----
+function loadSettings(){
+  try{
+    const s=JSON.parse(localStorage.getItem("chessHelper")||"{}");
+    if(s.myColor===0||s.myColor===8) myColor=s.myColor;
+    if(s.time) document.getElementById("thinkTime").value=s.time;
+    if(s.multipv) document.getElementById("multiPv").value=s.multipv;
+    if(typeof s.auto==="boolean") document.getElementById("autoHint").checked=s.auto;
+    if(typeof s.ru==="boolean") document.getElementById("ruNotation").checked=s.ru;
+  }catch(e){}
+}
+function saveSettings(){
+  try{
+    localStorage.setItem("chessHelper",JSON.stringify({
+      myColor,
+      time:document.getElementById("thinkTime").value,
+      multipv:document.getElementById("multiPv").value,
+      auto:document.getElementById("autoHint").checked,
+      ru:document.getElementById("ruNotation").checked
+    }));
+  }catch(e){}
+}
+
+// ---- нотация ----
+function sanOf(p,m,legal){
+  const from=mFrom(m), to=mTo(m), pc=p.b[from], t=pc&7;
+  let s;
+  if(mFlags(m)&F_CASTLE) s=(to&7)===6?"O-O":"O-O-O";
+  else{
+    const cap=p.b[to]||(mFlags(m)&F_EP);
+    if(t===P){
+      s=(cap?"abcdefgh"[from&7]+"x":"")+sqName(to);
+      if(mPromo(m)) s+="="+" PNBRQK"[mPromo(m)];
+    }else{
+      s=" PNBRQK"[t];
+      const others=legal.filter(o=>o!==m&&mTo(o)===to&&p.b[mFrom(o)]===pc).map(mFrom);
+      if(others.length){
+        if(!others.some(o=>(o&7)===(from&7))) s+="abcdefgh"[from&7];
+        else if(!others.some(o=>(o>>3)===(from>>3))) s+=8-(from>>3);
+        else s+=sqName(from);
+      }
+      s+=(cap?"x":"")+sqName(to);
+    }
+  }
+  p.make(m);
+  if(p.inCheck()) s+=p.legal().length?"+":"#";
+  p.unmake();
+  return s;
+}
+
+function ru(s){
+  if(!document.getElementById("ruNotation").checked) return s;
+  return s.replace(/[KQRBN]/g,c=>({K:"Кр",Q:"Ф",R:"Л",B:"С",N:"К"})[c]);
+}
+
+function pvToSan(line){
+  const p=pos.clone(), out=[];
+  for(const m of line){
+    const lg=p.legal();
+    if(!lg.includes(m)) break;
+    out.push(ru(sanOf(p,m,lg)));
+    p.make(m);
+  }
+  return out;
+}
+
+function fmtScore(sc){
+  if(sc>MATE-500) return "Мат в "+Math.ceil((MATE-sc)/2);
+  if(sc<-MATE+500) return "Мат вам в "+Math.ceil((MATE+sc)/2);
+  const v=sc/100;
+  return (v>0?"+":"")+v.toFixed(2);
+}
+
+// ---- отрисовка ----
+function render(){
+  boardEl.innerHTML="";
+  const check=pos.inCheck()?pos.kings[pos.side>>3]:-1;
+  const targets=sel>=0?legalMoves.filter(m=>mFrom(m)===sel).map(mTo):[];
+  const flipView=(myColor===BL)!==flipped;
+  for(let i=0;i<64;i++){
+    const s=flipView?63-i:i;
+    const r=s>>3, f=s&7;
+    const d=document.createElement("div");
+    d.className="sq "+((r+f)%2?"dark":"light");
+    if(lastMove&&(mFrom(lastMove)===s||mTo(lastMove)===s)) d.classList.add("last");
+    if(s===sel) d.classList.add("sel");
+    if(s===check) d.classList.add("check");
+    const p=pos.b[s];
+    if(p){
+      const sp=document.createElement("span");
+      sp.className="pc "+(p&BL?"b":"w");
+      sp.textContent=GLYPH[p&7]+VS;
+      d.appendChild(sp);
+    }
+    if(targets.includes(s)){
+      const mk=document.createElement("div");
+      mk.className=p?"ring":"dot";
+      d.appendChild(mk);
+    }
+    if(i%8===0){ const c=document.createElement("span"); c.className="coord r"; c.textContent=8-r; d.appendChild(c); }
+    if(i>=56){ const c=document.createElement("span"); c.className="coord f"; c.textContent="abcdefgh"[f]; d.appendChild(c); }
+    d.onclick=()=>onSquare(s);
+    boardEl.appendChild(d);
+  }
+  boardEl.appendChild(drawArrows(flipView));
+
+  document.getElementById("btnWhite").classList.toggle("on",myColor===0);
+  document.getElementById("btnBlack").classList.toggle("on",myColor===BL);
+  document.getElementById("evalbar").classList.toggle("meBlack",myColor===BL);
+
+  // статус
+  if(over) statusEl.textContent="🏁 "+over;
+  else if(pos.side===myColor) statusEl.textContent="🟢 Ваш ход"+(pos.inCheck()?" — вам шах!":"");
+  else statusEl.textContent="🤖 Ход бота — повторите его ход на доске или введите ниже";
+
+  renderHint();
+  renderMoves();
+  document.getElementById("fen").value=pos.fen();
+}
+
+function drawArrows(flipView){
+  const NS="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("id","arrows");
+  svg.setAttribute("viewBox","0 0 8 8");
+  const defs=document.createElementNS(NS,"defs");
+  for(const [id,col] of [["ah0","rgba(30,200,90,.9)"],["ah1","rgba(60,140,255,.75)"]]){
+    const mk=document.createElementNS(NS,"marker");
+    mk.setAttribute("id",id); mk.setAttribute("markerWidth","4"); mk.setAttribute("markerHeight","4");
+    mk.setAttribute("refX","2"); mk.setAttribute("refY","2"); mk.setAttribute("orient","auto");
+    const path=document.createElementNS(NS,"path");
+    path.setAttribute("d","M0,0 L4,2 L0,4 z"); path.setAttribute("fill",col);
+    mk.appendChild(path); defs.appendChild(mk);
+  }
+  svg.appendChild(defs);
+  if(!hint||hintFor!==moves.length||over) return svg;
+  const xy=s=>{ const v=flipView?63-s:s; return [(v&7)+.5,(v>>3)+.5]; };
+  hint.lines.slice(0,2).reverse().forEach((ln,ri,arr)=>{
+    const main=ri===arr.length-1;
+    const m=ln.m, [x1,y1]=xy(mFrom(m)), [x2,y2]=xy(mTo(m));
+    const len=Math.hypot(x2-x1,y2-y1), k=(len-.45)/len;
+    const line=document.createElementNS(NS,"line");
+    line.setAttribute("x1",x1); line.setAttribute("y1",y1);
+    line.setAttribute("x2",x1+(x2-x1)*k); line.setAttribute("y2",y1+(y2-y1)*k);
+    line.setAttribute("stroke",main?"rgba(30,200,90,.9)":"rgba(60,140,255,.6)");
+    line.setAttribute("stroke-width",main?".18":".12");
+    line.setAttribute("stroke-linecap","round");
+    line.setAttribute("marker-end","url(#"+(main?"ah0":"ah1")+")");
+    svg.appendChild(line);
+  });
+  return svg;
+}
+
+function renderHint(){
+  const best=document.getElementById("bestMove"), ev=document.getElementById("bestEval");
+  const lines=document.getElementById("lines"), di=document.getElementById("depthInfo");
+  const playBtn=document.getElementById("btnPlayBest");
+  lines.innerHTML="";
+  const valid=hint&&hintFor===moves.length&&!over;
+  playBtn.disabled=!valid;
+  if(!valid){
+    best.textContent=over?"—":(searching?"Думаю…":"—");
+    ev.textContent=""; di.textContent=searching?"":"";
+    setEvalBar(null);
+    return;
+  }
+  // оценка от лица стороны, которая ходит → переводим к «для меня»
+  const toMe=sc=>pos.side===myColor?sc:-sc;
+  const l0=hint.lines[0];
+  best.textContent=ru(sanOf(pos,l0.m,legalMoves));
+  ev.textContent="  "+fmtScore(toMe(l0.score))+(pos.side!==myColor?" (подсказка за бота)":"");
+  hint.lines.forEach((ln,i)=>{
+    const d=document.createElement("div");
+    d.className="line";
+    const pv=pvToSan(ln.pv);
+    d.innerHTML=`<b>${fmtScore(toMe(ln.score))}</b> ${pv[0]||""} <span class="pv">${pv.slice(1).join(" ")}</span>`;
+    d.onclick=()=>playMove(ln.m);
+    lines.appendChild(d);
+  });
+  di.textContent=`глубина ${hint.depth} · ${Math.round(hint.nodes/1000)}k позиций · ${(hint.time/1000).toFixed(1)} с`+(searching?" · считаю…":"");
+  setEvalBar(toMe(l0.score));
+}
+
+function setEvalBar(sc){
+  let pct=50;
+  if(sc!==null){
+    if(sc>MATE-500) pct=100;
+    else if(sc<-MATE+500) pct=0;
+    else pct=100/(1+Math.exp(-sc/250));
+  }
+  document.getElementById("evalFill").style.height=pct+"%";
+}
+
+function renderMoves(){
+  const el=document.getElementById("moveList");
+  const blackFirst=startFen.split(" ")[1]==="b";
+  let num=+(startFen.split(" ")[5]||1), html="", i=0;
+  if(blackFirst&&sans.length){ html+=`<span>${num}... ${ru(sans[0])}</span>`; i=1; num++; }
+  for(;i<sans.length;i+=2){
+    html+=`<span>${num}. ${ru(sans[i])}${sans[i+1]?" "+ru(sans[i+1]):""}</span>`;
+    num++;
+  }
+  el.innerHTML=html||'<span class="muted">пока нет ходов</span>';
+  el.scrollTop=el.scrollHeight;
+}
+
+// ---- ходы ----
+function onSquare(s){
+  if(over) return;
+  if(sel>=0){
+    const cand=legalMoves.filter(m=>mFrom(m)===sel&&mTo(m)===s);
+    if(cand.length>1){ askPromo(cand); return; }
+    if(cand.length===1){ playMove(cand[0]); return; }
+  }
+  const p=pos.b[s];
+  sel=(p&&(p&BL)===pos.side&&sel!==s)?s:-1;
+  render();
+}
+
+function askPromo(cand){
+  pendingPromo=cand;
+  const box=document.getElementById("promoBtns");
+  box.innerHTML="";
+  for(const t of [Q,R,B,N]){
+    const m=cand.find(x=>mPromo(x)===t);
+    const b=document.createElement("button");
+    b.textContent=GLYPH[t]+VS;
+    b.style.color=pos.side?"#141414":"#fff";
+    b.style.textShadow=pos.side?"none":"0 0 2px #000,0 0 2px #000";
+    b.onclick=()=>{ document.getElementById("promo").classList.add("hidden"); playMove(m); };
+    box.appendChild(b);
+  }
+  document.getElementById("promo").classList.remove("hidden");
+}
+
+function playMove(m){
+  if(over||!legalMoves.includes(m)) return;
+  stopSearch();
+  sans.push(sanOf(pos,m,legalMoves));
+  pos.make(m);
+  moves.push(m);
+  lastMove=m; sel=-1; msgEl.textContent="";
+  afterChange();
+}
+
+function playBest(){
+  if(hint&&hintFor===moves.length) playMove(hint.lines[0].m);
+}
+
+function undo(){
+  if(!moves.length) return;
+  stopSearch();
+  pos.unmake(); moves.pop(); sans.pop();
+  lastMove=moves[moves.length-1]||0; sel=-1;
+  afterChange();
+}
+
+function afterChange(){
+  legalMoves=pos.legal();
+  over="";
+  if(!legalMoves.length) over=pos.inCheck()?((pos.side===myColor)?"Мат. Вы проиграли":"Мат! Вы победили 🎉"):"Пат — ничья";
+  else if(pos.half>=100) over="Ничья по правилу 50 ходов";
+  else if(pos.repCount()>=3) over="Ничья — троекратное повторение";
+  else if(pos.insufficient()) over="Ничья — недостаточно материала";
+  hint=null;
+  render();
+  analyzeIfNeeded();
+}
+
+function analyzeIfNeeded(){
+  if(!over&&pos.side===myColor&&document.getElementById("autoHint").checked) analyze();
+  else render();
+}
+
+// ---- ввод хода текстом ----
+function normMove(s){
+  return s.replace(/Кр/g,"K").replace(/К/g,"N").replace(/Ф/g,"Q").replace(/Л/g,"R").replace(/С/g,"B")
+    .replace(/а/g,"a").replace(/с/g,"c").replace(/е/g,"e").replace(/х/g,"x")
+    .replace(/0/g,"O").replace(/[+#!?=x:\s-]/g,"").replace(/ep$/i,"");
+}
+
+function enterMove(){
+  const inp=document.getElementById("moveInput");
+  const raw=inp.value.trim();
+  if(!raw||over) return;
+  const t=normMove(raw);
+  let found=null;
+  const coord=t.match(/^([a-h][1-8])([a-h][1-8])([qrbnQRBN])?$/);
+  if(coord){
+    const f=sqIndex(coord[1]), to=sqIndex(coord[2]), pr=coord[3]?"pnbrqk".indexOf(coord[3].toLowerCase())+1:Q;
+    found=legalMoves.find(m=>mFrom(m)===f&&mTo(m)===to&&(!mPromo(m)||mPromo(m)===pr));
+  }
+  if(!found){
+    const ms=legalMoves.filter(m=>normMove(sanOf(pos,m,legalMoves))===t);
+    if(ms.length===1) found=ms[0];
+    // «e8» без указания фигуры превращения → ферзь
+    if(!found){ const q=legalMoves.filter(m=>mPromo(m)===Q&&normMove(sanOf(pos,m,legalMoves))===t+"Q"); if(q.length===1) found=q[0]; }
+  }
+  if(!found){ msgEl.textContent="Не понял ход «"+raw+"» или он невозможен в этой позиции"; return; }
+  inp.value="";
+  playMove(found);
+}
+document.getElementById("moveInput").addEventListener("keydown",e=>{ if(e.key==="Enter") enterMove(); });
+
+// ---- движок ----
+function getWorker(){
+  if(worker) return worker;
+  try{
+    const src=document.getElementById("engine").textContent;
+    const url=URL.createObjectURL(new Blob([src],{type:"application/javascript"}));
+    worker=new Worker(url);
+    worker.onmessage=onEngineMsg;
+    worker.onerror=()=>{ worker=null; };
+  }catch(e){ worker=null; }
+  return worker;
+}
+
+function onEngineMsg(e){
+  const d=e.data;
+  if(d.id!==searchId) return;
+  if(d.type==="done") searching=false;
+  if(d.info){ hint=d.info; hintFor=moves.length; }
+  render();
+}
+
+function stopSearch(){
+  if(searching&&worker){ worker.terminate(); worker=null; }
+  searching=false;
+  searchId++;
+}
+
+function analyze(){
+  if(over) return;
+  stopSearch();
+  const id=searchId;
+  const time=+document.getElementById("thinkTime").value;
+  const multipv=+document.getElementById("multiPv").value;
+  const w=getWorker();
+  searching=true;
+  hint=null;
+  render();
+  if(w){
+    w.postMessage({id,fen:startFen,moves:moves.slice(),time,multipv});
+  }else{
+    // запасной вариант без Worker — считаем в основном потоке
+    setTimeout(()=>{
+      if(id!==searchId) return;
+      const res=new Engine().think(pos.clone(),time,multipv);
+      if(id!==searchId) return;
+      searching=false;
+      if(res){ hint=res; hintFor=moves.length; }
+      render();
+    },30);
+  }
+}
+
+// ---- управление ----
+function setMyColor(c){
+  myColor=c; flipped=false; sel=-1;
+  saveSettings();
+  stopSearch(); hint=null;
+  afterChange();
+}
+
+function flip(){ flipped=!flipped; render(); }
+
+function newGame(){
+  stopSearch();
+  startFen=START_FEN;
+  pos=new Pos().load(startFen);
+  moves=[]; sans=[]; lastMove=0; sel=-1; hint=null;
+  afterChange();
+}
+
+function loadFen(){
+  const f=document.getElementById("fen").value.trim();
+  try{
+    const p=new Pos().load(f);
+    stopSearch();
+    startFen=p.fen(); pos=p;
+    moves=[]; sans=[]; lastMove=0; sel=-1; hint=null;
+    msgEl.textContent="";
+    afterChange();
+  }catch(e){ msgEl.textContent=e.message; }
+}
+
+function copyFen(){
+  const f=pos.fen();
+  try{ navigator.clipboard.writeText(f); msgEl.textContent="FEN скопирован"; }
+  catch(e){ msgEl.textContent=f; }
+}
+
+loadSettings();
+afterChange();
+</script>
+
+</body>
+</html>
