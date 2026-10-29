@@ -12,13 +12,15 @@
     2. Картинка закрепится поверх всех окон.
 
     Кнопки на панели управления:
-        [ Ярче + ]  [ Темнее − ]  [ Сброс ]  [ Переместить ]  [ Выход ]
+        [ Ярче + ]  [ Темнее − ]  [ Сброс ]  [ Выход ]
+        [ Поставить в другое место ]  [ Другое фото ]
 
     Клавиши (когда активна картинка или панель):
         + / =  или  ↑   — ярче
         −      или  ↓   — темнее
         0               — сбросить яркость (100%)
         M               — выбрать новое место мышкой
+        O               — выбрать другое фото (и поставить его мышкой)
         Esc             — выход
 
     Мышь по картинке:
@@ -30,7 +32,7 @@
     модуль `keyboard` (pip install keyboard):
         Ctrl+Alt+↑ / Ctrl+Alt+↓ — ярче / темнее
         Ctrl+Alt+0              — сброс яркости
-        Ctrl+Alt+M              — переместить
+        Ctrl+Alt+M              — поставить в другое место
         Ctrl+Alt+Q              — выход
 
 Нужно: Python 3 и Pillow (pip install pillow).
@@ -54,6 +56,7 @@ except ImportError:
 BRIGHTNESS_STEP = 0.1
 BRIGHTNESS_MIN = 0.0
 BRIGHTNESS_MAX = 3.0
+FILETYPES = [("Картинки", "*.png *.jpg *.jpeg *.bmp *.gif *.webp"), ("Все файлы", "*.*")]
 
 
 def enable_dpi_awareness():
@@ -119,11 +122,22 @@ class PinnedImage:
             ("Ярче +", lambda: self.change(+BRIGHTNESS_STEP)),
             ("Темнее −", lambda: self.change(-BRIGHTNESS_STEP)),
             ("Сброс", self.reset),
-            ("Переместить", self.pick_position),
             ("Выход", self.quit),
         ]
         for text, cmd in buttons:
             tk.Button(row, text=text, width=11, command=cmd).pack(side="left", padx=2)
+
+        row2 = tk.Frame(self.panel)
+        row2.pack(padx=8, pady=(0, 8), fill="x")
+        tk.Button(
+            row2, text="📍 Поставить в другое место", font=("Segoe UI", 10, "bold"),
+            bg="#2e7d32", fg="white", activebackground="#388e3c", activeforeground="white",
+            command=self.pick_position,
+        ).pack(side="left", padx=2, expand=True, fill="x")
+        tk.Button(
+            row2, text="🖼 Другое фото", font=("Segoe UI", 10, "bold"),
+            command=self.change_image,
+        ).pack(side="left", padx=2, expand=True, fill="x")
 
         self.scale = tk.Scale(
             self.panel, from_=int(BRIGHTNESS_MIN * 100), to=int(BRIGHTNESS_MAX * 100),
@@ -140,6 +154,8 @@ class PinnedImage:
         w.bind("0", lambda e: self.reset())
         w.bind("<KeyPress-m>", lambda e: self.pick_position())
         w.bind("<KeyPress-M>", lambda e: self.pick_position())
+        w.bind("<KeyPress-o>", lambda e: self.change_image())
+        w.bind("<KeyPress-O>", lambda e: self.change_image())
         w.bind("<Escape>", lambda e: self.quit())
 
     def _bind_global_hotkeys(self):
@@ -183,6 +199,19 @@ class PinnedImage:
         self.info.configure(text=f"Яркость: {percent}%")
         if int(self.scale.get()) != percent:
             self.scale.set(percent)
+
+    def change_image(self):
+        """Выбрать другой файл и поставить его мышкой (яркость сохраняется)."""
+        path = filedialog.askopenfilename(parent=self.panel, title="Выбери картинку", filetypes=FILETYPES)
+        if not path:
+            return
+        try:
+            self.original = Image.open(path).convert("RGBA")
+        except Exception as exc:
+            messagebox.showerror("Ошибка", f"Не удалось открыть картинку:\n{exc}", parent=self.panel)
+            return
+        self.render()
+        self.pick_position()
 
     # ---------- позиция ----------
     def pick_position(self):
@@ -243,7 +272,7 @@ def main():
 
     path = sys.argv[1] if len(sys.argv) > 1 else filedialog.askopenfilename(
         title="Выбери картинку",
-        filetypes=[("Картинки", "*.png *.jpg *.jpeg *.bmp *.gif *.webp"), ("Все файлы", "*.*")],
+        filetypes=FILETYPES,
     )
     if not path:
         return
